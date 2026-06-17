@@ -1,0 +1,10 @@
+{
+  "name": "Teachable Machine Platformer",
+  "description": "An 8-bit retro platformer controlled by your webcam using Google Teachable Machine or built-in body motion tracking to jump and crouch.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

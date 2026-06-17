@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Neo-Brutalist retro shadows */
+.shadow-brutal {
+  box-shadow: 8px 8px 0px 0px rgba(0,0,0,1);
+}
+
+.shadow-brutal-sm {
+  box-shadow: 4px 4px 0px 0px rgba(0,0,0,1);
+}
+
+.shadow-brutal-white {
+  box-shadow: 8px 8px 0px 0px rgba(255,255,255,1);
+}
+
+/* Custom retro font overrides for 8-bit text */
+.font-pixel {
+  font-family: 'Press Start 2P', cursive, monospace;
+}
+
+/* Image rendering optimizations for vintage pixel alignment */
+.image-render-retro {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  image-rendering: -moz-crisp-edges;
+}
+
+/* CRT monitor horizontal scanline replication lines */
+.bg-scanlines {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.25) 50%
+  );
+  background-size: 100% 4px;
+}
+
+@keyframes neonFlicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+    text-shadow: 
+      0 0 4px #000,
+      2px 2px 0px #fff;
+  }
+  20%, 24%, 55% {
+    text-shadow: none;
+  }
+}
+
+.text-neon-glow {
+  text-shadow: 3px 3px 0px rgba(0,0,0,1);
+}
