@@ -8,7 +8,8 @@ export enum GameState {
 export enum ControllerMode {
   KEYBOARD = 'KEYBOARD',
   BUILTIN_MOTION = 'BUILTIN_MOTION',
-  TEACHABLE_MACHINE = 'TEACHABLE_MACHINE'
+  TEACHABLE_MACHINE = 'TEACHABLE_MACHINE',
+  LOCAL_MODEL = 'LOCAL_MODEL'
 }
 
 export enum GameAction {

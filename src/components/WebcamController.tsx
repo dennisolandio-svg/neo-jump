@@ -47,12 +47,20 @@ export default function WebcamController({
     crouch: 0.0,
   });
 
+  // Local model state (loads /model/ directory served as static by Vite)
+  const [localModelLoaded, setLocalModelLoaded] = useState(false);
+  const [localModelLoading, setLocalModelLoading] = useState(false);
+  const [localModelError, setLocalModelError] = useState<string | null>(null);
+  const [localModel, setLocalModel] = useState<any>(null);
+  const [localModelLabels, setLocalModelLabels] = useState<string[]>([]);
+  const [localScores, setLocalScores] = useState<Record<string, number>>({});
+
   // Load TensorFlow.js and Teachable Machine dynamically to avoid compilations or dependency locks
   const [libsReady, setLibsReady] = useState({ tf: false, tm: false });
 
   useEffect(() => {
     // Dynamic loading of scripts
-    if (controllerMode !== ControllerMode.TEACHABLE_MACHINE) return;
+    if (controllerMode !== ControllerMode.TEACHABLE_MACHINE && controllerMode !== ControllerMode.LOCAL_MODEL) return;
     if (libsReady.tf && libsReady.tm) return;
 
     const loadScripts = async () => {
@@ -85,6 +93,37 @@ export default function WebcamController({
 
     loadScripts();
   }, [controllerMode, libsReady]);
+
+  // Auto-load the local /model/ when mode is LOCAL_MODEL and TF libs are ready
+  useEffect(() => {
+    if (controllerMode !== ControllerMode.LOCAL_MODEL) return;
+    if (!libsReady.tf || !libsReady.tm) return;
+    if (localModelLoaded || localModelLoading) return;
+
+    const loadLocal = async () => {
+      setLocalModelLoading(true);
+      setLocalModelError(null);
+      try {
+        const tmImage = (window as any).tmImage;
+        if (!tmImage) throw new Error('TM library not ready');
+
+        const loaded = await tmImage.load('/model/model.json', '/model/metadata.json');
+        setLocalModel(loaded);
+
+        const metaRes = await fetch('/model/metadata.json');
+        const meta = await metaRes.json();
+        setLocalModelLabels((meta.labels as string[]).map((l: string) => l.toLowerCase()));
+        setLocalModelLoaded(true);
+      } catch (err: any) {
+        console.error('Local model load error:', err);
+        setLocalModelError('Could not load /model/. Ensure model.json, metadata.json and weights.bin are in the /model/ folder.');
+      } finally {
+        setLocalModelLoading(false);
+      }
+    };
+
+    loadLocal();
+  }, [controllerMode, libsReady, localModelLoaded, localModelLoading]);
 
   // Handle camera activation
   const startCamera = async () => {
@@ -315,6 +354,35 @@ export default function WebcamController({
         } catch (err) {
           console.error('Prediction loop error:', err);
         }
+      } else if (controllerMode === ControllerMode.LOCAL_MODEL && localModelLoaded && localModel) {
+        // Local model: happy → JUMP, sad → CROUCH, angry → ignored
+        try {
+          if (videoRef.current) {
+            const predictions = await localModel.predict(videoRef.current);
+            const scores: Record<string, number> = {};
+            predictions.forEach((p: any) => {
+              scores[p.className.toLowerCase()] = p.probability;
+            });
+            setLocalScores(scores);
+
+            const happyVal = scores['happy'] ?? 0;
+            const sadVal   = scores['sad']   ?? 0;
+            const angryVal = scores['angry'] ?? 0;
+
+            if (happyVal > 0.65) {
+              onActionTriggered(GameAction.JUMP);
+            } else if (sadVal > 0.65) {
+              onActionTriggered(GameAction.CROUCH);
+            } else if (angryVal > 0.65) {
+              // Angry = keep running (NONE resets to normal run state)
+              onActionTriggered(GameAction.NONE);
+            } else {
+              onActionTriggered(GameAction.NONE);
+            }
+          }
+        } catch (err) {
+          console.error('Local model prediction error:', err);
+        }
       }
 
       animationId = requestAnimationFrame(predictLoop);
@@ -325,7 +393,7 @@ export default function WebcamController({
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [cameraActive, controllerMode, samples, tmModel, tmModelLoaded]);
+  }, [cameraActive, controllerMode, samples, tmModel, tmModelLoaded, localModel, localModelLoaded]);
 
   const sampleCounts = {
     idle: samples.filter((s) => s.label === 'idle').length,
@@ -392,6 +460,17 @@ export default function WebcamController({
             }`}
           >
             🧠 TM Link
+          </button>
+          <button
+            id="mode_btn_local_model"
+            onClick={() => setControllerMode(ControllerMode.LOCAL_MODEL)}
+            className={`flex-1 md:flex-none py-1.5 px-3 text-[10px] uppercase font-bold transition-all duration-100 border ${
+              controllerMode === ControllerMode.LOCAL_MODEL
+                ? 'bg-[#FFD700] text-black border-black'
+                : 'text-black border-transparent hover:bg-yellow-50'
+            }`}
+          >
+            🎭 Local Model
           </button>
         </div>
       </div>
@@ -723,6 +802,86 @@ export default function WebcamController({
                     </div>
                   </div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* D. LOCAL MODEL PANEL — /model/ auto-loaded, happy=JUMP, sad=CROUCH */}
+          {controllerMode === ControllerMode.LOCAL_MODEL && (
+            <div className="bg-white border-2 border-black p-4 flex-1 flex flex-col gap-3 shadow-brutal-sm">
+              <h3 className="text-[11px] font-black uppercase text-black flex items-center gap-1.5 bg-[#FFD700] p-1.5 border border-black">
+                🎭 LOCAL TEACHABLE MACHINE MODEL
+              </h3>
+
+              {/* Loading state */}
+              {(localModelLoading || (!localModelLoaded && !localModelError)) && (
+                <div className="flex items-center gap-2 text-[10px] font-bold text-gray-600 uppercase">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  {localModelLoading ? 'LOADING MODEL FROM /model/...' : 'WAITING FOR TENSORFLOW...'}
+                </div>
+              )}
+
+              {/* Error state */}
+              {localModelError && (
+                <div className="text-[9px] text-red-600 font-bold uppercase flex items-start gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {localModelError}
+                </div>
+              )}
+
+              {/* Loaded state */}
+              {localModelLoaded && (
+                <>
+                  <div className="text-[9px] text-[#00AA00] font-bold uppercase flex items-center gap-1">
+                    ✅ Model ready! Make a face to control the runner.
+                  </div>
+
+                  {/* Legend */}
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-[#fffdf0] border-2 border-black p-2">
+                      <div className="text-lg">😄</div>
+                      <div className="text-[9px] font-black uppercase text-[#3B82F6]">Happy = JUMP</div>
+                    </div>
+                    <div className="bg-[#fffdf0] border-2 border-black p-2">
+                      <div className="text-lg">😢</div>
+                      <div className="text-[9px] font-black uppercase text-[#EF4444]">Sad = CROUCH</div>
+                    </div>
+                    <div className="bg-[#fffdf0] border-2 border-black p-2">
+                      <div className="text-lg">😠</div>
+                      <div className="text-[9px] font-black uppercase text-[#9c27b0]">Angry = RUN</div>
+                    </div>
+                  </div>
+
+                  {/* Confidence bars per model label */}
+                  <div className="border-t-2 border-dashed border-black pt-2 space-y-2">
+                    <span className="text-[9px] font-black text-black block mb-1 uppercase select-none">
+                      📈 LIVE CONFIDENCE:
+                    </span>
+                    {localModelLabels.map((label) => {
+                      const val = localScores[label] ?? 0;
+                      const isJump   = label === 'happy';
+                      const isCrouch = label === 'sad';
+                      const emoji = isJump ? '😄' : isCrouch ? '😢' : '😠';
+                      const color = isJump ? '#3B82F6' : isCrouch ? '#EF4444' : '#9c27b0';
+                      const actionTag = isJump ? ' → JUMP' : isCrouch ? ' → CROUCH' : ' → RUN';
+                      return (
+                        <div key={label} className="flex items-center gap-2">
+                          <span className="text-sm w-5 shrink-0">{emoji}</span>
+                          <span className="w-16 text-[9px] font-bold uppercase truncate" style={{ color }}>
+                            {label}{actionTag}
+                          </span>
+                          <div className="flex-1 h-4 bg-gray-100 border border-black">
+                            <div
+                              className="h-full border-r-2 border-black transition-all duration-75"
+                              style={{ width: `${val * 100}%`, backgroundColor: color }}
+                            />
+                          </div>
+                          <span className="text-[10px] font-black w-8 text-right">{Math.round(val * 100)}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
           )}
